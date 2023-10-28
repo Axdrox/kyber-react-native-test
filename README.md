@@ -1,2 +1,2 @@
-# kyber-react-native-test
-This is where I test the Kyber KEM based on the  Anton Tutoveanu Kyber implementation in JavaScript. In order to encrypt with AES.
+# react-native-kyber-test
+This is where I test the Kyber KEM using the  Anton Tutoveanu's Kyber implementation in JavaScript, adding the logic to encrypt with AES.
