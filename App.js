@@ -13,18 +13,18 @@ const kyber = require('crystals-kyber');
 //console.log(hash);
 
 function generarClavesKyber() {
-  // To generate a public and private key pair (pk, sk)
-  let pk_sk = kyber.KeyGen512();
+  // Para generar un par de claves pública y privada (pk, sk)
+  let pk_sk = kyber.KeyGen1024();
   let pk = pk_sk[0];
   let sk = pk_sk[1];
 
-  // To generate a random 256 bit symmetric key (ss) and its encapsulation (c)
-  let c_ss = kyber.Encrypt512(pk);
+  // Generar una clave simétrica aleatoria de 256 bits (ss) y su encapsulación (c)
+  let c_ss = kyber.Encrypt1024(pk);
   let c = c_ss[0];
   let ss1 = c_ss[1];
 
-  // To decapsulate and obtain the same symmetric key
-  let ss2 = kyber.Decrypt512(c, sk);
+  // Para decapsular y obtener la misma clave simétrica
+  let ss2 = kyber.Decrypt1024(c, sk);
 
   return { ss1, ss2 };
 }
@@ -99,71 +99,52 @@ console.log(encrypted.salt.toString())
 
 
 function cifrarAES(textoClaro, ss1) {
-  //Crear nuestra string para ingresar a funcion hash que sera el IV
-  let fecha = new Date;
-  let entradaHash = fecha.getDate().toString() + fecha.getMonth() + fecha.getFullYear() + fecha.getHours();
-  const iv = CryptoES.SHA3(entradaHash, { outputLength: 256 });
-  //console.log(iv.toString());
+  //Para dejar la clave compartida en objeto del tipo WordArray
+  const wordsClaveCompartida = CryptoES.lib.WordArray.create(ss1);
 
-  //Para dejarlo en objeto del tipo WordArray
-  const key = CryptoES.lib.WordArray.create(ss1);
-
-  // Para que ambos utilicen la misma sal y puedan descifrar con la kdf
+  // Para generar la sal
   let fecha2 = new Date;
-  let entradaHash2 = "P" + fecha2.getDate().toString() + "Q" + fecha2.getMonth() + fecha2.getFullYear() + "C" + fecha2.getHours();
-  //const salt = CryptoES.SHA256(entradaHash2);
-  const salt = CryptoES.SHA3(entradaHash2, { outputLength: 256 });
-  //console.log(salt.toString());
-  const key128Bits = CryptoES.PBKDF2(key, salt, { keySize: 128 / 32 });
+  let entradaHash = "P" + fecha2.getDate().toString() + "Q" + fecha2.getMonth() + fecha2.getFullYear() + "C" + fecha2.getHours();
+  const salt = CryptoES.MD5(entradaHash);
 
-  /*                                         KYBER KEY vs KDF FROM KYBER KEY
-    PARA MEDIR TIEMPOS DE CIFRADO CON AES128 (UTILIZANDO UNA KDF) Y AES256 (UTILZIANDO LA CLAVE COMPARTIDA DE KYBER)
-  
-    //SI SE NECESITA REDUCIR EL TAMANIO
-    const salt = CryptoES.lib.WordArray.random(128 / 8);
-    //Generar una clave con KDF a partir de la clave compartida de kyber
-    const key128Bits = CryptoES.PBKDF2(key, salt, { keySize: 128 / 32 });
-  
-    const startTime = performance.now();
-    const ciferWithKyberKey = CryptoES.AES.encrypt(textoClaro, key, { iv: iv, mode: CryptoES.mode.CBC });
-    const endTime = performance.now();
-    const executionTime = endTime - startTime;
-    console.log("Tiempo de ejecucion de microsegundos AES256: " + executionTime);
-    //NOTE: SigBytes is a property of the WordArray class in the CryptoJS library. It represents the number of bytes in the WordArray object.
-    console.log("EL NUMERO DE BYTES DE LA LLAVE KYBER QUE SE OCUPO PARA CIFRAR CON AES: " + ciferWithKyberKey.key.sigBytes.toString());
-  
-    const startTime2 = performance.now();
-    const cipherWithKDF128Key = CryptoES.AES.encrypt(textoClaro, key128Bits, { iv: iv, mode: CryptoES.mode.CBC });
-    const endTime2 = performance.now();
-    const executionTime2 = endTime2 - startTime2;
-    console.log("\nTiempo de ejecucion de microsegundos AES128: " + executionTime2);
-    //NOTE: SigBytes is a property of the WordArray class in the CryptoJS library. It represents the number of bytes in the WordArray object.
-    console.log("EL NUMERO DE BYTES DE LA LLAVE KDF QUE SE OCUPO PARA CIFRAR CON AES: " + cipherWithKDF128Key.key.sigBytes.toString());
-  */
+  // Generar la clave simetrica de 128 bits
+  const key128Bits = CryptoES.PBKDF2(wordsClaveCompartida, salt, { keySize: 128 / 32 });
 
-  return CryptoES.AES.encrypt(textoClaro, key128Bits, { iv: iv, mode: CryptoES.mode.CBC }).ciphertext.toString(CryptoES.enc.Base64);
+  console.log("Clave simétrica para cifrar: " + key128Bits.toString(CryptoES.enc.Base64));
+
+  // Para generar el vector de inicializacion (IV)
+  let fecha = new Date;
+  let entradaHash2 = fecha.getDate().toString() + fecha.getMonth() + fecha.getFullYear() + fecha.getHours();
+  const iv = CryptoES.MD5(entradaHash2);
+
+  // Cifrar el texto en claro
+  return CryptoES.AES.encrypt(textoClaro, key128Bits, { iv: iv, mode: CryptoES.mode.CTR }).ciphertext.toString(CryptoES.enc.Base64);
 }
 
 function descifrarAES(textoCifrado, ss2) {
   // Convierte el texto cifrado de base 64 a un objeto WordArray
-  const words = CryptoES.enc.Base64.parse(textoCifrado);
+  const wordsTextoCifrado = CryptoES.enc.Base64.parse(textoCifrado);
 
-  //Crear nuestra string para ingresar a funcion hash que sera el IV
-  let fecha = new Date;
-  let entradaHash = fecha.getDate().toString() + fecha.getMonth() + fecha.getFullYear() + fecha.getHours();
-  const iv = CryptoES.SHA3(entradaHash, { outputLength: 256 });
-
-  //Para dejarlo en objeto del tipo WordArray
+  //Para dejar la clave compartida en objeto del tipo WordArray
   const key = CryptoES.lib.WordArray.create(ss2);
 
-  //SI SE NECESITA REDUCIR EL TAMANIO
-  // Para que ambos utilicen la misma sal y puedan descifrar con la kdf
+  // Para generar la misma sal y obtener la misma clave
   let fecha2 = new Date;
-  let entradaHash2 = "P" + fecha2.getDate().toString() + "Q" + fecha2.getMonth() + fecha2.getFullYear() + "C" + fecha2.getHours();
-  const salt = CryptoES.SHA3(entradaHash2, { outputLength: 256 });
+  let entradaHash = "P" + fecha2.getDate().toString() + "Q" + fecha2.getMonth() + fecha2.getFullYear() + "C" + fecha2.getHours();
+  const salt = CryptoES.MD5(entradaHash);
+
+  // Generar la clave simetrica de 128 bits
   const key128Bits = CryptoES.PBKDF2(key, salt, { keySize: 128 / 32 });
 
-  return CryptoES.AES.decrypt({ ciphertext: words }, key128Bits, { iv: iv, mode: CryptoES.mode.CBC }).toString(CryptoES.enc.Utf8);
+  console.log("Clave simétrica para descifrar: " + key128Bits.toString(CryptoES.enc.Base64));
+
+  // Para generar el vector de inicializacion (IV)
+  let fecha = new Date;
+  let entradaHash2 = fecha.getDate().toString() + fecha.getMonth() + fecha.getFullYear() + fecha.getHours();
+  const iv = CryptoES.MD5(entradaHash2);
+
+  // Descifrar el texto cifrado y codificarlo en UTF-8
+  return CryptoES.AES.decrypt({ ciphertext: wordsTextoCifrado }, key128Bits, { iv: iv, mode: CryptoES.mode.CTR }).toString(CryptoES.enc.Utf8);
 }
 
 
@@ -233,8 +214,8 @@ export default function App() {
             }}
           />
 
-          <Text>Secreto compartido 1:{"\n"}{secretoCompartido_1}{"\n"}</Text>
-          <Text>Secreto compartido 2:{"\n"}{secretoCompartido_2}{"\n"}</Text>
+          <Text>Clave compartida 1:{"\n"}{secretoCompartido_1}{"\n"}</Text>
+          <Text>Clave compartida 2:{"\n"}{secretoCompartido_2}{"\n"}</Text>
 
           <TextInput style={styles.textInput} placeholder='Escribe algo'
             onChangeText={(textoClaro) => {
